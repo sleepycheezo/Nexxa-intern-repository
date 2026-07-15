@@ -1,8 +1,10 @@
 import { useState, useRef, ReactNode } from "react";
-import { FormState, Category, Priority } from "../../types";
+import { FormState, Priority, User } from "../../types";
 import styles from "./IssueForm.module.css";
 
 interface IssueFormProps {
+  categories: string[];
+  users: User[];
   onSubmit: (data: FormState) => void;
   onCancel: () => void;
 }
@@ -15,8 +17,6 @@ interface FieldProps {
   required?: boolean;
 }
 
-const CATEGORIES: Category[] = ["Hardware", "Software", "Network", "Access / Permissions", "Other"];
-
 const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "p1", label: "P1 — Critical" },
   { value: "p2", label: "P2 — High" },
@@ -24,29 +24,20 @@ const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "p4", label: "P4 — Low" },
 ];
 
-const ASSIGNEES: { value: string; label: string }[] = [
-  { value: "", label: "Unassigned" },
-  { value: "Chiazo Ajulu", label: "Chiazo Ajulu" },
-  { value: "Damipe Olayinka", label: "Damipe Olayinka" },
-  { value: "Isabella Oge", label: "Isabella Oge" },
-];
-
-const EMPTY_FORM: FormState = {
-  title: "",
-  description: "",
-  category: "Hardware",
-  priority: "p3",
-  assignee: "",
-  attachment: null,
-};
-
 interface FormErrors {
   title?: string | null;
   description?: string | null;
 }
 
-export default function IssueForm({ onSubmit, onCancel }: IssueFormProps) {
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+export default function IssueForm({ categories, users, onSubmit, onCancel }: IssueFormProps) {
+  const [form, setForm] = useState<FormState>(() => ({
+    title: "",
+    description: "",
+    category: categories[0] ?? "",
+    priority: "p3",
+    assignee: "",
+    attachment: null,
+  }));
   const [errors, setErrors] = useState<FormErrors>({});
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -108,8 +99,8 @@ export default function IssueForm({ onSubmit, onCancel }: IssueFormProps) {
 
         <div className={styles.row2}>
           <Field label="Category">
-            <select className={styles.select} value={form.category} onChange={(e) => set("category", e.target.value as Category)}>
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            <select className={styles.select} value={form.category} onChange={(e) => set("category", e.target.value)}>
+              {categories.map((c) => <option key={c}>{c}</option>)}
             </select>
           </Field>
           <Field label="Priority">
@@ -121,7 +112,10 @@ export default function IssueForm({ onSubmit, onCancel }: IssueFormProps) {
 
         <Field label="Assigned to">
           <select className={styles.select} value={form.assignee} onChange={(e) => set("assignee", e.target.value)}>
-            {ASSIGNEES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            <option value="">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={`${u.firstName} ${u.lastName}`}>{u.firstName} {u.lastName}</option>
+            ))}
           </select>
         </Field>
 

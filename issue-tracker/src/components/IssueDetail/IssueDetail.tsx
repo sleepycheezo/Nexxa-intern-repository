@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Issue, Status, Category, Priority, FormState } from "../../types";
+import { Issue, Status, Priority, FormState, User } from "../../types";
+import ProgressBar from "../ProgressBar";
 import styles from "./IssueDetail.module.css";
 
 interface IssueDetailProps {
   issue: Issue;
+  categories: string[];
+  users: User[];
   onBack: () => void;
   onUpdateStatus: (id: string, status: Status) => void;
-  onUpdateIssue: (id: string, changes: Partial<Omit<Issue, "id" | "createdAt">>) => void;
+  onUpdateIssue: (id: string, changes: Partial<Omit<Issue, "id">>) => void;
   loading: boolean;
 }
 
@@ -23,16 +26,26 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: "resolved", label: "Resolved" },
 ];
 
-const CATEGORIES: Category[] = ["Hardware", "Software", "Network", "Access / Permissions", "Other"];
+const STATUS_PERCENT: Record<Status, number> = {
+  open: 0,
+  "in-progress": 50,
+  resolved: 100,
+};
+
 const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "p1", label: "P1 — Critical" },
   { value: "p2", label: "P2 — High" },
   { value: "p3", label: "P3 — Normal" },
   { value: "p4", label: "P4 — Low" },
 ];
-const ASSIGNEES = ["", "Chiazo Ajulu", "Damipe Olayinka", "Isabella Oge"];
 
-export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIssue, loading }: IssueDetailProps) {
+function toDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export default function IssueDetail({ issue, categories, users, onBack, onUpdateStatus, onUpdateIssue, loading }: IssueDetailProps) {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<FormState>>({
     title: issue.title,
@@ -41,6 +54,7 @@ export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIss
     priority: issue.priority,
     assignee: issue.assignee,
   });
+  const [editCreatedAt, setEditCreatedAt] = useState(() => toDatetimeLocal(issue.createdAt));
 
   const formatted = new Date(issue.createdAt).toLocaleDateString(undefined, {
     day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
@@ -53,6 +67,7 @@ export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIss
       category: editForm.category || issue.category,
       priority: editForm.priority || issue.priority,
       assignee: editForm.assignee ?? issue.assignee,
+      createdAt: editCreatedAt ? new Date(editCreatedAt).toISOString() : issue.createdAt,
     });
     setEditing(false);
   };
@@ -91,17 +106,17 @@ export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIss
           {/* Status toggle */}
           <div className={styles.section}>
             <h2 className={styles.sectionTitle}>Status</h2>
-            <div className={styles.statusRow}>
-              {STATUS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  disabled={loading}
-                  className={`${styles.statusBtn} ${issue.status === opt.value ? styles[`statusActive_${opt.value}`] : ""}`}
-                  onClick={() => onUpdateStatus(issue.id, opt.value)}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            <select
+              className={`${styles.statusSelect} ${styles[`statusActive_${issue.status}`]}`}
+              disabled={loading}
+              value={issue.status}
+              onChange={(e) => onUpdateStatus(issue.id, e.target.value as Status)}
+            >
+              {STATUS_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <div className={styles.progressRow}>
+              <ProgressBar percent={STATUS_PERCENT[issue.status]} tone={issue.status === "resolved" ? "success" : "neutral"} />
+              <span className={styles.progressLabel}>{STATUS_PERCENT[issue.status]}% complete</span>
             </div>
           </div>
 
@@ -128,8 +143,8 @@ export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIss
             <div className={styles.metaItem}>
               <span className={styles.metaLabel}>Category</span>
               {editing ? (
-                <select className={styles.metaSelect} value={editForm.category} onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value as Category }))}>
-                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                <select className={styles.metaSelect} value={editForm.category} onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}>
+                  {categories.map((c) => <option key={c}>{c}</option>)}
                 </select>
               ) : (
                 <span className={styles.metaValue}>{issue.category}</span>
@@ -149,7 +164,10 @@ export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIss
               <span className={styles.metaLabel}>Assigned to</span>
               {editing ? (
                 <select className={styles.metaSelect} value={editForm.assignee} onChange={(e) => setEditForm((f) => ({ ...f, assignee: e.target.value }))}>
-                  {ASSIGNEES.map((a) => <option key={a} value={a}>{a || "Unassigned"}</option>)}
+                  <option value="">Unassigned</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={`${u.firstName} ${u.lastName}`}>{u.firstName} {u.lastName}</option>
+                  ))}
                 </select>
               ) : (
                 <span className={styles.metaValue}>{issue.assignee || "Unassigned"}</span>
@@ -157,8 +175,27 @@ export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIss
             </div>
             <div className={styles.metaItem}>
               <span className={styles.metaLabel}>Submitted</span>
-              <span className={styles.metaValue}>{formatted}</span>
+              {editing ? (
+                <input
+                  className={styles.metaDateInput}
+                  type="datetime-local"
+                  value={editCreatedAt}
+                  onChange={(e) => setEditCreatedAt(e.target.value)}
+                />
+              ) : (
+                <span className={styles.metaValue}>{formatted}</span>
+              )}
             </div>
+            {issue.resolvedAt && (
+              <div className={styles.metaItem}>
+                <span className={styles.metaLabel}>Resolved</span>
+                <span className={styles.metaValue}>
+                  {new Date(issue.resolvedAt).toLocaleDateString(undefined, {
+                    day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            )}
             {issue.attachmentName && (
               <div className={styles.metaItem}>
                 <span className={styles.metaLabel}>Attachment</span>

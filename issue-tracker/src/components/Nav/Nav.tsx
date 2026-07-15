@@ -1,7 +1,7 @@
 import { useState } from "react";
 import styles from "./Nav.module.css";
 
-export type NavPage = "dashboard";
+export type NavPage = "dashboard" | "setup" | "analytics";
 
 interface NavProps {
   activePage: NavPage;
@@ -19,9 +19,11 @@ export default function Nav({ activePage, onNavigate }: NavProps) {
   return (
     <>
       {/* Mobile hamburger */}
-      <button className={styles.hamburger} onClick={() => setOpen(true)} aria-label="Open menu">
-        <span /><span /><span />
-      </button>
+      {!open && (
+        <button className={styles.hamburger} onClick={() => setOpen(true)} aria-label="Open menu">
+          <span /><span /><span />
+        </button>
+      )}
 
       {/* Overlay */}
       {open && <div className={styles.overlay} onClick={() => setOpen(false)} />}
@@ -38,6 +40,20 @@ export default function Nav({ activePage, onNavigate }: NavProps) {
           >
             <span className={styles.icon}>📋</span>
             Dashboard
+          </button>
+          <button
+            className={`${styles.link} ${activePage === "setup" ? styles.active : ""}`}
+            onClick={() => handleNav("setup")}
+          >
+            <span className={styles.icon}>⚙️</span>
+            Setup
+          </button>
+          <button
+            className={`${styles.link} ${activePage === "analytics" ? styles.active : ""}`}
+            onClick={() => handleNav("analytics")}
+          >
+            <span className={styles.icon}>📊</span>
+            Analytics and Metrics
           </button>
         </nav>
       </aside>
