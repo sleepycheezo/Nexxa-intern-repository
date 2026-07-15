@@ -30,7 +30,7 @@ const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "p3", label: "P3 — Normal" },
   { value: "p4", label: "P4 — Low" },
 ];
-const ASSIGNEES = ["", "Alice M.", "Bob K.", "Carlos R."];
+const ASSIGNEES = ["", "Chiazo Ajulu", "Damipe Olayinka", "Isabella Oge"];
 
 export default function IssueDetail({ issue, onBack, onUpdateStatus, onUpdateIssue, loading }: IssueDetailProps) {
   const [editing, setEditing] = useState(false);
