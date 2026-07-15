@@ -41,6 +41,7 @@ export function useIssues() {
         attachmentName: form.attachment?.name ?? null,
         status: "open",
         createdAt: new Date().toISOString(),
+        resolvedAt: null,
       };
       const updated = [newIssue, ...issues];
       setIssues(updated);
@@ -48,7 +49,7 @@ export function useIssues() {
     });
   };
 
-  const updateIssue = (id: string, changes: Partial<Omit<Issue, "id" | "createdAt">>): void => {
+  const updateIssue = (id: string, changes: Partial<Omit<Issue, "id">>): void => {
     withLoading(() => {
       const updated = issues.map((i) => i.id === id ? { ...i, ...changes } : i);
       setIssues(updated);
@@ -58,7 +59,11 @@ export function useIssues() {
 
   const updateStatus = (id: string, status: Status): void => {
     withLoading(() => {
-      const updated = issues.map((i) => i.id === id ? { ...i, status } : i);
+      const updated = issues.map((i) =>
+        i.id === id
+          ? { ...i, status, resolvedAt: status === "resolved" ? new Date().toISOString() : null }
+          : i
+      );
       setIssues(updated);
       saveIssues(updated);
     });
