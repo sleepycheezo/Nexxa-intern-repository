@@ -1,70 +1,79 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Issue, FormState, Status } from "../types";
 
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!res.ok) throw new Error(`Request to ${path} failed: ${res.status}`);
-  return res.status === 204 ? (undefined as T) : res.json();
+const STORAGE_KEY = "it_issues";
+const LOADING_DELAY = 600;
+
+function loadIssues(): Issue[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveIssues(issues: Issue[]): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(issues));
 }
 
 export function useIssues() {
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [issues, setIssues] = useState<Issue[]>(loadIssues);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    api<Issue[]>("/issues").then(setIssues).finally(() => setLoading(false));
-  }, []);
-
-  const withLoading = async (fn: () => Promise<void>) => {
+  const withLoading = (fn: () => void) => {
     setLoading(true);
-    try {
-      await fn();
-    } finally {
+    setTimeout(() => {
+      fn();
       setLoading(false);
-    }
+    }, LOADING_DELAY);
   };
 
   const addIssue = (form: FormState): void => {
-    withLoading(async () => {
-      const created = await api<Issue>("/issues", {
-        method: "POST",
-        body: JSON.stringify({
-          title: form.title,
-          description: form.description,
-          category: form.category,
-          priority: form.priority,
-          assignee: form.assignee,
-          attachmentName: form.attachment?.name ?? null,
-        }),
-      });
-      setIssues((prev) => [created, ...prev]);
+    withLoading(() => {
+      const newIssue: Issue = {
+        id: `ISS-${Date.now()}`,
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        priority: form.priority,
+        assignee: form.assignee,
+        attachmentName: form.attachment?.name ?? null,
+        status: "open",
+        createdAt: new Date().toISOString(),
+        resolvedAt: null,
+      };
+      const updated = [newIssue, ...issues];
+      setIssues(updated);
+      saveIssues(updated);
     });
   };
 
   const updateIssue = (id: string, changes: Partial<Omit<Issue, "id">>): void => {
-    withLoading(async () => {
-      const updated = await api<Issue>(`/issues/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(changes),
-      });
-      setIssues((prev) => prev.map((i) => (i.id === id ? updated : i)));
+    withLoading(() => {
+      const updated = issues.map((i) => i.id === id ? { ...i, ...changes } : i);
+      setIssues(updated);
+      saveIssues(updated);
     });
   };
 
   const updateStatus = (id: string, status: Status): void => {
-    updateIssue(id, {
-      status,
-      resolvedAt: status === "resolved" ? new Date().toISOString() : null,
+    withLoading(() => {
+      const updated = issues.map((i) =>
+        i.id === id
+          ? { ...i, status, resolvedAt: status === "resolved" ? new Date().toISOString() : null }
+          : i
+      );
+      setIssues(updated);
+      saveIssues(updated);
     });
   };
 
   const deleteIssue = (id: string): void => {
-    withLoading(async () => {
-      await api<void>(`/issues/${id}`, { method: "DELETE" });
-      setIssues((prev) => prev.filter((i) => i.id !== id));
+    withLoading(() => {
+      const updated = issues.filter((i) => i.id !== id);
+      setIssues(updated);
+      saveIssues(updated);
     });
   };
 
