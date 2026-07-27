@@ -50,44 +50,38 @@ export function useSetup() {
 
   const addRole = (name: string) =>
     withLoading(async () => {
-      await rolesApi.createRole(name);
-      const r = await rolesApi.listRoles();
-      setRoles(r);
+      const created = await rolesApi.createRole(name);
+      setRoles((prev) => [...prev, created]);
     }, "Failed to add role");
 
   const deleteRole = (id: string) =>
     withLoading(async () => {
       await rolesApi.deleteRole(id);
-      const r = await rolesApi.listRoles();
-      setRoles(r);
+      setRoles((prev) => prev.filter((r) => r.id !== id));
     }, "Failed to delete role");
 
   const addCategory = (name: string) =>
     withLoading(async () => {
-      await categoriesApi.createCategory(name);
-      const c = await categoriesApi.listCategories();
-      setCategories(c);
+      const created = await categoriesApi.createCategory(name);
+      setCategories((prev) => [...prev, created]);
     }, "Failed to add category");
 
   const deleteCategory = (id: string) =>
     withLoading(async () => {
       await categoriesApi.deleteCategory(id);
-      const c = await categoriesApi.listCategories();
-      setCategories(c);
+      setCategories((prev) => prev.filter((c) => c.id !== id));
     }, "Failed to delete category");
 
   const addUser = (data: { firstName: string; lastName: string; roleId: string }) =>
     withLoading(async () => {
-      await usersApi.createUser(data);
-      const u = await usersApi.listUsers();
-      setUsers(u);
+      const created = await usersApi.createUser(data);
+      setUsers((prev) => [...prev, created]);
     }, "Failed to add user");
 
   const deleteUser = (id: string) =>
     withLoading(async () => {
       await usersApi.deleteUser(id);
-      const u = await usersApi.listUsers();
-      setUsers(u);
+      setUsers((prev) => prev.filter((u) => u.id !== id));
     }, "Failed to delete user");
 
   return {
