@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { Issue, Status, Priority, FormState, User } from "../../types";
+import { Issue, Status, Priority, IssueEditChanges, User, Category } from "../../types";
+import { ApiError } from "../../api/client";
 import ProgressBar from "../ProgressBar";
 import styles from "./IssueDetail.module.css";
 
 interface IssueDetailProps {
   issue: Issue;
-  categories: string[];
+  categories: Category[];
   users: User[];
   onBack: () => void;
-  onUpdateStatus: (id: string, status: Status) => void;
-  onUpdateIssue: (id: string, changes: Partial<Omit<Issue, "id">>) => void;
+  onUpdateStatus: (id: string, status: Status) => Promise<Issue>;
+  onUpdateIssue: (id: string, changes: IssueEditChanges) => Promise<Issue>;
   loading: boolean;
 }
 
@@ -39,37 +40,45 @@ const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "p4", label: "P4 — Low" },
 ];
 
-function toDatetimeLocal(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export default function IssueDetail({ issue, categories, users, onBack, onUpdateStatus, onUpdateIssue, loading }: IssueDetailProps) {
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState<Partial<FormState>>({
+  const [editForm, setEditForm] = useState<IssueEditChanges>({
     title: issue.title,
     description: issue.description,
-    category: issue.category,
+    categoryId: issue.categoryId ?? "",
     priority: issue.priority,
-    assignee: issue.assignee,
+    assignedUserId: issue.assignedUserId ?? "",
   });
-  const [editCreatedAt, setEditCreatedAt] = useState(() => toDatetimeLocal(issue.createdAt));
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const formatted = new Date(issue.createdAt).toLocaleDateString(undefined, {
     day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
 
-  const handleSaveEdit = () => {
-    onUpdateIssue(issue.id, {
-      title: editForm.title || issue.title,
-      description: editForm.description || issue.description,
-      category: editForm.category || issue.category,
-      priority: editForm.priority || issue.priority,
-      assignee: editForm.assignee ?? issue.assignee,
-      createdAt: editCreatedAt ? new Date(editCreatedAt).toISOString() : issue.createdAt,
-    });
-    setEditing(false);
+  const handleSaveEdit = async () => {
+    setSaveError(null);
+    try {
+      await onUpdateIssue(issue.id, {
+        title: editForm.title || issue.title,
+        description: editForm.description || issue.description,
+        categoryId: editForm.categoryId || issue.categoryId || undefined,
+        priority: editForm.priority || issue.priority,
+        assignedUserId: editForm.assignedUserId ?? issue.assignedUserId,
+      });
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Failed to save changes.");
+    }
+  };
+
+  const handleStatusChange = async (status: Status) => {
+    setStatusError(null);
+    try {
+      await onUpdateStatus(issue.id, status);
+    } catch (err) {
+      setStatusError(err instanceof ApiError ? err.message : "Failed to update status.");
+    }
   };
 
   return (
@@ -110,10 +119,11 @@ export default function IssueDetail({ issue, categories, users, onBack, onUpdate
               className={`${styles.statusSelect} ${styles[`statusActive_${issue.status}`]}`}
               disabled={loading}
               value={issue.status}
-              onChange={(e) => onUpdateStatus(issue.id, e.target.value as Status)}
+              onChange={(e) => handleStatusChange(e.target.value as Status)}
             >
               {STATUS_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
+            {statusError && <p className={styles.errorMsg}>{statusError}</p>}
             <div className={styles.progressRow}>
               <ProgressBar percent={STATUS_PERCENT[issue.status]} tone={issue.status === "resolved" ? "success" : "neutral"} />
               <span className={styles.progressLabel}>{STATUS_PERCENT[issue.status]}% complete</span>
@@ -143,8 +153,8 @@ export default function IssueDetail({ issue, categories, users, onBack, onUpdate
             <div className={styles.metaItem}>
               <span className={styles.metaLabel}>Category</span>
               {editing ? (
-                <select className={styles.metaSelect} value={editForm.category} onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}>
-                  {categories.map((c) => <option key={c}>{c}</option>)}
+                <select className={styles.metaSelect} value={editForm.categoryId} onChange={(e) => setEditForm((f) => ({ ...f, categoryId: e.target.value }))}>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               ) : (
                 <span className={styles.metaValue}>{issue.category}</span>
@@ -163,10 +173,10 @@ export default function IssueDetail({ issue, categories, users, onBack, onUpdate
             <div className={styles.metaItem}>
               <span className={styles.metaLabel}>Assigned to</span>
               {editing ? (
-                <select className={styles.metaSelect} value={editForm.assignee} onChange={(e) => setEditForm((f) => ({ ...f, assignee: e.target.value }))}>
+                <select className={styles.metaSelect} value={editForm.assignedUserId ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, assignedUserId: e.target.value }))}>
                   <option value="">Unassigned</option>
                   {users.map((u) => (
-                    <option key={u.id} value={`${u.firstName} ${u.lastName}`}>{u.firstName} {u.lastName}</option>
+                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
                   ))}
                 </select>
               ) : (
@@ -175,16 +185,7 @@ export default function IssueDetail({ issue, categories, users, onBack, onUpdate
             </div>
             <div className={styles.metaItem}>
               <span className={styles.metaLabel}>Submitted</span>
-              {editing ? (
-                <input
-                  className={styles.metaDateInput}
-                  type="datetime-local"
-                  value={editCreatedAt}
-                  onChange={(e) => setEditCreatedAt(e.target.value)}
-                />
-              ) : (
-                <span className={styles.metaValue}>{formatted}</span>
-              )}
+              <span className={styles.metaValue}>{formatted}</span>
             </div>
             {issue.resolvedAt && (
               <div className={styles.metaItem}>
@@ -196,10 +197,12 @@ export default function IssueDetail({ issue, categories, users, onBack, onUpdate
                 </span>
               </div>
             )}
-            {issue.attachmentName && (
+            {issue.attachment && (
               <div className={styles.metaItem}>
                 <span className={styles.metaLabel}>Attachment</span>
-                <span className={styles.metaValue}>📎 {issue.attachmentName}</span>
+                <a className={styles.metaValue} href={`${import.meta.env.VITE_API_URL ?? "http://localhost:4000"}${issue.attachment.url}`} target="_blank" rel="noreferrer">
+                  📎 {issue.attachment.filename}
+                </a>
               </div>
             )}
           </div>
@@ -208,6 +211,7 @@ export default function IssueDetail({ issue, categories, users, onBack, onUpdate
           {editing && (
             <>
               <div className={styles.divider} />
+              {saveError && <p className={styles.errorMsg}>{saveError}</p>}
               <div className={styles.editActions}>
                 <button className={styles.btnSecondary} onClick={() => setEditing(false)}>Cancel</button>
                 <button className={styles.btnPrimary} disabled={loading} onClick={handleSaveEdit}>

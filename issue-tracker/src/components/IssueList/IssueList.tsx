@@ -1,10 +1,17 @@
-import { useState, useMemo } from "react";
-import { Issue, Priority } from "../../types";
+import { useEffect, useState } from "react";
+import { Issue, Priority, Status, IssueQuery, Kpis } from "../../types";
+import { getKpis } from "../../api/dashboard";
 import styles from "./IssueList.module.css";
 
 interface IssueListProps {
   issues: Issue[];
+  total: number;
+  page: number;
+  pageSize: number;
+  query: IssueQuery;
   loading: boolean;
+  onQueryChange: (query: Partial<IssueQuery>) => void;
+  onPageChange: (page: number) => void;
   onNewIssue: () => void;
   onSelectIssue: (issue: Issue) => void;
   onDeleteIssue: (id: string) => void;
@@ -23,41 +30,30 @@ const STATUS_LABELS: Record<string, string> = {
   resolved: "Resolved",
 };
 
-type FilterValue = "all" | Priority;
-const PAGE_SIZE = 10;
-
-export default function IssueList({ issues, loading, onNewIssue, onSelectIssue, onDeleteIssue }: IssueListProps) {
-  const [filter, setFilter] = useState<FilterValue>("all");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+export default function IssueList({
+  issues, total, page, pageSize, query, loading,
+  onQueryChange, onPageChange, onNewIssue, onSelectIssue, onDeleteIssue,
+}: IssueListProps) {
+  const [searchInput, setSearchInput] = useState(query.q ?? "");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [kpis, setKpis] = useState<Kpis>({ open: 0, inProgress: 0, resolved: 0 });
 
-  const counts = useMemo(() => ({
-    open: issues.filter((i) => i.status === "open").length,
-    inProgress: issues.filter((i) => i.status === "in-progress").length,
-    resolved: issues.filter((i) => i.status === "resolved").length,
-  }), [issues]);
+  useEffect(() => {
+    getKpis().then(setKpis).catch(() => {});
+  }, [issues]);
 
-  const filtered = useMemo(() => {
-    let result = issues;
-    if (filter !== "all") result = result.filter((i) => i.priority === filter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((i) =>
-        i.title.toLowerCase().includes(q) ||
-        i.description.toLowerCase().includes(q) ||
-        i.id.toLowerCase().includes(q) ||
-        i.category.toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [issues, filter, search]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== (query.q ?? "")) onQueryChange({ q: searchInput || undefined });
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const handleFilterChange = (val: FilterValue) => { setFilter(val); setPage(1); };
-  const handleSearch = (val: string) => { setSearch(val); setPage(1); };
+  const handlePriorityChange = (val: string) => onQueryChange({ priority: (val || undefined) as Priority | undefined });
+  const handleStatusChange = (val: string) => onQueryChange({ status: (val || undefined) as Status | undefined });
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -74,7 +70,7 @@ export default function IssueList({ issues, loading, onNewIssue, onSelectIssue, 
       <div className={styles.header}>
         <div>
           <h1 className={styles.heading}>IT Issues</h1>
-          <p className={styles.subheading}>{filtered.length} of {issues.length} issue{issues.length !== 1 ? "s" : ""}</p>
+          <p className={styles.subheading}>{total} issue{total !== 1 ? "s" : ""}</p>
         </div>
         <button className={styles.newBtn} onClick={onNewIssue}>+ Submit new issue</button>
       </div>
@@ -82,15 +78,15 @@ export default function IssueList({ issues, loading, onNewIssue, onSelectIssue, 
       {/* Status counts */}
       <div className={styles.statsRow}>
         <div className={styles.statCard}>
-          <span className={styles.statNum + " " + styles.statOpen}>{counts.open}</span>
+          <span className={styles.statNum + " " + styles.statOpen}>{kpis.open}</span>
           <span className={styles.statLabel}>Open</span>
         </div>
         <div className={styles.statCard}>
-          <span className={styles.statNum + " " + styles.statProgress}>{counts.inProgress}</span>
+          <span className={styles.statNum + " " + styles.statProgress}>{kpis.inProgress}</span>
           <span className={styles.statLabel}>In Progress</span>
         </div>
         <div className={styles.statCard}>
-          <span className={styles.statNum + " " + styles.statResolved}>{counts.resolved}</span>
+          <span className={styles.statNum + " " + styles.statResolved}>{kpis.resolved}</span>
           <span className={styles.statLabel}>Resolved</span>
         </div>
       </div>
@@ -100,20 +96,30 @@ export default function IssueList({ issues, loading, onNewIssue, onSelectIssue, 
         <input
           className={styles.searchInput}
           type="text"
-          placeholder="🔍  Search by title, ID, category…"
-          value={search}
-          onChange={(e) => handleSearch(e.target.value)}
+          placeholder="🔍  Search by title or ID…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
         <select
           className={styles.filterSelect}
-          value={filter}
-          onChange={(e) => handleFilterChange(e.target.value as FilterValue)}
+          value={query.priority ?? ""}
+          onChange={(e) => handlePriorityChange(e.target.value)}
         >
-          <option value="all">All priorities</option>
+          <option value="">All priorities</option>
           <option value="p1">P1 — Critical</option>
           <option value="p2">P2 — High</option>
           <option value="p3">P3 — Normal</option>
           <option value="p4">P4 — Low</option>
+        </select>
+        <select
+          className={styles.filterSelect}
+          value={query.status ?? ""}
+          onChange={(e) => handleStatusChange(e.target.value)}
+        >
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="in-progress">In Progress</option>
+          <option value="resolved">Resolved</option>
         </select>
       </div>
 
@@ -123,16 +129,16 @@ export default function IssueList({ issues, loading, onNewIssue, onSelectIssue, 
           <div className={styles.spinner} />
           <p>Loading issues…</p>
         </div>
-      ) : paginated.length === 0 ? (
+      ) : issues.length === 0 ? (
         <div className={styles.empty}>
           <p className={styles.emptyIcon}>📋</p>
-          <p className={styles.emptyTitle}>{issues.length === 0 ? "No issues yet" : "No issues match"}</p>
-          <p className={styles.emptySub}>{issues.length === 0 ? "Submit your first issue using the button above." : "Try adjusting your search or filter."}</p>
+          <p className={styles.emptyTitle}>{total === 0 ? "No issues yet" : "No issues match"}</p>
+          <p className={styles.emptySub}>{total === 0 ? "Submit your first issue using the button above." : "Try adjusting your search or filter."}</p>
         </div>
       ) : (
         <>
           <div className={styles.list}>
-            {paginated.map((issue) => (
+            {issues.map((issue) => (
               <div key={issue.id} className={styles.card} onClick={() => onSelectIssue(issue)}>
                 <div className={styles.cardTop}>
                   <div className={styles.cardLeft}>
@@ -161,7 +167,6 @@ export default function IssueList({ issues, loading, onNewIssue, onSelectIssue, 
                 <div className={styles.cardMeta}>
                   <span>{issue.category}</span>
                   {issue.assignee && <span>· {issue.assignee}</span>}
-                  {issue.attachmentName && <span>· 📎 {issue.attachmentName}</span>}
                   <span>· {new Date(issue.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
               </div>
@@ -171,9 +176,9 @@ export default function IssueList({ issues, loading, onNewIssue, onSelectIssue, 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className={styles.pagination}>
-              <button className={styles.pageBtn} disabled={page === 1} onClick={() => setPage(page - 1)}>← Prev</button>
+              <button className={styles.pageBtn} disabled={page === 1} onClick={() => onPageChange(page - 1)}>← Prev</button>
               <span className={styles.pageInfo}>Page {page} of {totalPages}</span>
-              <button className={styles.pageBtn} disabled={page === totalPages} onClick={() => setPage(page + 1)}>Next →</button>
+              <button className={styles.pageBtn} disabled={page === totalPages} onClick={() => onPageChange(page + 1)}>Next →</button>
             </div>
           )}
         </>

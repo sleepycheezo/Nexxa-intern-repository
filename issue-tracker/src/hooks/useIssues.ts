@@ -1,81 +1,107 @@
-import { useState } from "react";
-import { Issue, FormState, Status } from "../types";
+import { useCallback, useEffect, useState } from "react";
+import { Issue, FormState, Status, IssueQuery } from "../types";
+import * as issuesApi from "../api/issues";
+import { ApiError } from "../api/client";
 
-const STORAGE_KEY = "it_issues";
-const LOADING_DELAY = 600;
+const DEFAULT_QUERY: IssueQuery = { page: 1, pageSize: 10 };
 
-function loadIssues(): Issue[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveIssues(issues: Issue[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(issues));
+function messageFor(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
 }
 
 export function useIssues() {
-  const [issues, setIssues] = useState<Issue[]>(loadIssues);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [total, setTotal] = useState(0);
+  const [query, setQueryState] = useState<IssueQuery>(DEFAULT_QUERY);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const withLoading = (fn: () => void) => {
+  const fetchIssues = useCallback(async (q: IssueQuery) => {
     setLoading(true);
-    setTimeout(() => {
-      fn();
+    setError(null);
+    try {
+      const res = await issuesApi.listIssues(q);
+      setIssues(res.data);
+      setTotal(res.total);
+    } catch (err) {
+      setError(messageFor(err, "Failed to load issues"));
+    } finally {
       setLoading(false);
-    }, LOADING_DELAY);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchIssues(query);
+  }, [fetchIssues, query]);
+
+  const setQuery = (partial: Partial<IssueQuery>) => {
+    setQueryState((prev) => ({ ...prev, ...partial, page: 1 }));
   };
 
-  const addIssue = (form: FormState): void => {
-    withLoading(() => {
-      const newIssue: Issue = {
-        id: `ISS-${Date.now()}`,
-        title: form.title,
-        description: form.description,
-        category: form.category,
-        priority: form.priority,
-        assignee: form.assignee,
-        attachmentName: form.attachment?.name ?? null,
-        status: "open",
-        createdAt: new Date().toISOString(),
-        resolvedAt: null,
-      };
-      const updated = [newIssue, ...issues];
-      setIssues(updated);
-      saveIssues(updated);
-    });
+  const setPage = (page: number) => setQueryState((prev) => ({ ...prev, page }));
+
+  const refetch = () => fetchIssues(query);
+
+  const addIssue = async (form: FormState): Promise<Issue> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const created = await issuesApi.createIssue(form);
+      await fetchIssues(query);
+      return created;
+    } catch (err) {
+      setError(messageFor(err, "Failed to create issue"));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updateIssue = (id: string, changes: Partial<Omit<Issue, "id">>): void => {
-    withLoading(() => {
-      const updated = issues.map((i) => i.id === id ? { ...i, ...changes } : i);
-      setIssues(updated);
-      saveIssues(updated);
-    });
+  const updateIssue = async (id: string, changes: issuesApi.IssueUpdate): Promise<Issue> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const updated = await issuesApi.updateIssue(id, changes);
+      await fetchIssues(query);
+      return updated;
+    } catch (err) {
+      setError(messageFor(err, "Failed to update issue"));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updateStatus = (id: string, status: Status): void => {
-    withLoading(() => {
-      const updated = issues.map((i) =>
-        i.id === id
-          ? { ...i, status, resolvedAt: status === "resolved" ? new Date().toISOString() : null }
-          : i
-      );
-      setIssues(updated);
-      saveIssues(updated);
-    });
+  const updateStatus = (id: string, status: Status): Promise<Issue> => updateIssue(id, { status });
+
+  const deleteIssue = async (id: string): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    try {
+      await issuesApi.deleteIssue(id);
+      await fetchIssues(query);
+    } catch (err) {
+      setError(messageFor(err, "Failed to delete issue"));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteIssue = (id: string): void => {
-    withLoading(() => {
-      const updated = issues.filter((i) => i.id !== id);
-      setIssues(updated);
-      saveIssues(updated);
-    });
+  return {
+    issues,
+    total,
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 10,
+    query,
+    setQuery,
+    setPage,
+    loading,
+    error,
+    addIssue,
+    updateIssue,
+    updateStatus,
+    deleteIssue,
+    refetch,
   };
-
-  return { issues, loading, addIssue, updateIssue, updateStatus, deleteIssue };
 }

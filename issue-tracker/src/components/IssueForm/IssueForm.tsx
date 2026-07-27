@@ -1,11 +1,12 @@
 import { useState, useRef, ReactNode } from "react";
-import { FormState, Priority, User } from "../../types";
+import { FormState, Priority, User, Category } from "../../types";
+import { ApiError } from "../../api/client";
 import styles from "./IssueForm.module.css";
 
 interface IssueFormProps {
-  categories: string[];
+  categories: Category[];
   users: User[];
-  onSubmit: (data: FormState) => void;
+  onSubmit: (data: FormState) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -33,13 +34,15 @@ export default function IssueForm({ categories, users, onSubmit, onCancel }: Iss
   const [form, setForm] = useState<FormState>(() => ({
     title: "",
     description: "",
-    category: categories[0] ?? "",
+    categoryId: categories[0]?.id ?? "",
     priority: "p3",
-    assignee: "",
+    assignedUserId: "",
     attachment: null,
   }));
   const [errors, setErrors] = useState<FormErrors>({});
   const [dragging, setDragging] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -54,10 +57,18 @@ export default function IssueForm({ categories, users, onSubmit, onCancel }: Iss
     return e;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
-    onSubmit(form);
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit(form);
+    } catch (err) {
+      setSubmitError(err instanceof ApiError ? err.message : "Failed to submit issue. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleFile = (file: File | undefined) => {
@@ -77,6 +88,8 @@ export default function IssueForm({ categories, users, onSubmit, onCancel }: Iss
           <h2 className={styles.heading}>Submit a new issue</h2>
           <button className={styles.cancelBtn} onClick={onCancel}>✕ Cancel</button>
         </div>
+
+        {submitError && <p className={styles.errorMsg}>{submitError}</p>}
 
         <Field label="Issue title" error={errors.title} required>
           <input
@@ -99,8 +112,8 @@ export default function IssueForm({ categories, users, onSubmit, onCancel }: Iss
 
         <div className={styles.row2}>
           <Field label="Category">
-            <select className={styles.select} value={form.category} onChange={(e) => set("category", e.target.value)}>
-              {categories.map((c) => <option key={c}>{c}</option>)}
+            <select className={styles.select} value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)}>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
           <Field label="Priority">
@@ -111,10 +124,10 @@ export default function IssueForm({ categories, users, onSubmit, onCancel }: Iss
         </div>
 
         <Field label="Assigned to">
-          <select className={styles.select} value={form.assignee} onChange={(e) => set("assignee", e.target.value)}>
+          <select className={styles.select} value={form.assignedUserId} onChange={(e) => set("assignedUserId", e.target.value)}>
             <option value="">Unassigned</option>
             {users.map((u) => (
-              <option key={u.id} value={`${u.firstName} ${u.lastName}`}>{u.firstName} {u.lastName}</option>
+              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
             ))}
           </select>
         </Field>
@@ -137,8 +150,10 @@ export default function IssueForm({ categories, users, onSubmit, onCancel }: Iss
         </Field>
 
         <div className={styles.btnRow}>
-          <button className={styles.btnSecondary} onClick={onCancel}>Cancel</button>
-          <button className={styles.btnPrimary} onClick={handleSubmit}>Submit issue</button>
+          <button className={styles.btnSecondary} onClick={onCancel} disabled={submitting}>Cancel</button>
+          <button className={styles.btnPrimary} onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Submitting…" : "Submit issue"}
+          </button>
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ import SetupPage from "./components/SetupPage";
 import AnalyticsPage from "./components/AnalyticsPage";
 import { useIssues } from "./hooks/useIssues";
 import { useSetup } from "./hooks/useSetup";
-import { FormState, Issue, Status } from "./types";
+import { FormState, Issue, Status, IssueEditChanges } from "./types";
 import styles from "./App.module.css";
 
 type View = "list" | "form" | "detail";
@@ -16,11 +16,14 @@ export default function App() {
   const [view, setView] = useState<View>("list");
   const [navPage, setNavPage] = useState<NavPage>("dashboard");
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
-  const { issues, loading, addIssue, updateIssue, updateStatus, deleteIssue } = useIssues();
+  const {
+    issues, total, page, pageSize, query, loading,
+    setQuery, setPage, addIssue, updateIssue, updateStatus, deleteIssue,
+  } = useIssues();
   const setup = useSetup();
 
-  const handleSubmit = (data: FormState) => {
-    addIssue(data);
+  const handleSubmit = async (data: FormState) => {
+    await addIssue(data);
     setView("list");
   };
 
@@ -29,21 +32,16 @@ export default function App() {
     setView("detail");
   };
 
-  const handleUpdateStatus = (id: string, status: Status) => {
-    updateStatus(id, status);
-    if (selectedIssue?.id === id) {
-      setSelectedIssue((prev) => prev
-        ? { ...prev, status, resolvedAt: status === "resolved" ? new Date().toISOString() : null }
-        : prev
-      );
-    }
+  const handleUpdateStatus = async (id: string, status: Status): Promise<Issue> => {
+    const updated = await updateStatus(id, status);
+    if (selectedIssue?.id === id) setSelectedIssue(updated);
+    return updated;
   };
 
-  const handleUpdateIssue = (id: string, changes: Partial<Omit<Issue, "id">>) => {
-    updateIssue(id, changes);
-    if (selectedIssue?.id === id) {
-      setSelectedIssue((prev) => prev ? { ...prev, ...changes } : prev);
-    }
+  const handleUpdateIssue = async (id: string, changes: IssueEditChanges): Promise<Issue> => {
+    const updated = await updateIssue(id, changes);
+    if (selectedIssue?.id === id) setSelectedIssue(updated);
+    return updated;
   };
 
   const handleNavigate = (page: NavPage) => {
@@ -70,7 +68,7 @@ export default function App() {
             onDeleteCategory={setup.deleteCategory}
           />
         )}
-        {navPage === "analytics" && <AnalyticsPage issues={issues} />}
+        {navPage === "analytics" && <AnalyticsPage />}
         {navPage === "dashboard" && (
           <>
             {view === "form" && (
@@ -95,7 +93,13 @@ export default function App() {
             {view === "list" && (
               <IssueList
                 issues={issues}
+                total={total}
+                page={page}
+                pageSize={pageSize}
+                query={query}
                 loading={loading}
+                onQueryChange={setQuery}
+                onPageChange={setPage}
                 onNewIssue={() => setView("form")}
                 onSelectIssue={handleSelectIssue}
                 onDeleteIssue={deleteIssue}

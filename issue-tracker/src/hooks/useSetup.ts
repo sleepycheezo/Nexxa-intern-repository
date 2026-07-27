@@ -1,125 +1,106 @@
-import { useState } from "react";
-import { User } from "../types";
+import { useCallback, useEffect, useState } from "react";
+import { Role, Category, User } from "../types";
+import * as rolesApi from "../api/roles";
+import * as categoriesApi from "../api/categories";
+import * as usersApi from "../api/users";
+import { ApiError } from "../api/client";
 
-const ROLES_KEY = "it_roles";
-const USERS_KEY = "it_users";
-const CATEGORIES_KEY = "it_categories";
-const LOADING_DELAY = 600;
-
-const DEFAULT_ROLES = ["Support Agent"];
-const DEFAULT_CATEGORIES = ["Hardware", "Software", "Network", "Access / Permissions", "Other"];
-const DEFAULT_USERS: User[] = [
-  { id: "USR-seed-1", firstName: "Chiazo", lastName: "Ajulu", role: "Support Agent" },
-  { id: "USR-seed-2", firstName: "Damipe", lastName: "Olayinka", role: "Support Agent" },
-  { id: "USR-seed-3", firstName: "Isabella", lastName: "Oge", role: "Support Agent" },
-];
-
-function loadRoles(): string[] {
-  try {
-    const raw = localStorage.getItem(ROLES_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_ROLES;
-  } catch {
-    return DEFAULT_ROLES;
-  }
-}
-
-function loadUsers(): User[] {
-  try {
-    const raw = localStorage.getItem(USERS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_USERS;
-  } catch {
-    return DEFAULT_USERS;
-  }
-}
-
-function loadCategories(): string[] {
-  try {
-    const raw = localStorage.getItem(CATEGORIES_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_CATEGORIES;
-  } catch {
-    return DEFAULT_CATEGORIES;
-  }
-}
-
-function saveRoles(roles: string[]): void {
-  localStorage.setItem(ROLES_KEY, JSON.stringify(roles));
-}
-
-function saveUsers(users: User[]): void {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-function saveCategories(categories: string[]): void {
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+function messageFor(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
 }
 
 export function useSetup() {
-  const [roles, setRoles] = useState<string[]>(loadRoles);
-  const [users, setUsers] = useState<User[]>(loadUsers);
-  const [categories, setCategories] = useState<string[]>(loadCategories);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const withLoading = (fn: () => void) => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
-    setTimeout(() => {
-      fn();
+    setError(null);
+    try {
+      const [r, c, u] = await Promise.all([rolesApi.listRoles(), categoriesApi.listCategories(), usersApi.listUsers()]);
+      setRoles(r);
+      setCategories(c);
+      setUsers(u);
+    } catch (err) {
+      setError(messageFor(err, "Failed to load setup data"));
+    } finally {
       setLoading(false);
-    }, LOADING_DELAY);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const withLoading = async (fn: () => Promise<void>, fallback: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(messageFor(err, fallback));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const addRole = (name: string): void => {
-    withLoading(() => {
-      const updated = [...roles, name.trim()];
-      setRoles(updated);
-      saveRoles(updated);
-    });
-  };
+  const addRole = (name: string) =>
+    withLoading(async () => {
+      await rolesApi.createRole(name);
+      const r = await rolesApi.listRoles();
+      setRoles(r);
+    }, "Failed to add role");
 
-  const deleteRole = (name: string): void => {
-    withLoading(() => {
-      const updated = roles.filter((r) => r !== name);
-      setRoles(updated);
-      saveRoles(updated);
-    });
-  };
+  const deleteRole = (id: string) =>
+    withLoading(async () => {
+      await rolesApi.deleteRole(id);
+      const r = await rolesApi.listRoles();
+      setRoles(r);
+    }, "Failed to delete role");
 
-  const addCategory = (name: string): void => {
-    withLoading(() => {
-      const updated = [...categories, name.trim()];
-      setCategories(updated);
-      saveCategories(updated);
-    });
-  };
+  const addCategory = (name: string) =>
+    withLoading(async () => {
+      await categoriesApi.createCategory(name);
+      const c = await categoriesApi.listCategories();
+      setCategories(c);
+    }, "Failed to add category");
 
-  const deleteCategory = (name: string): void => {
-    withLoading(() => {
-      const updated = categories.filter((c) => c !== name);
-      setCategories(updated);
-      saveCategories(updated);
-    });
-  };
+  const deleteCategory = (id: string) =>
+    withLoading(async () => {
+      await categoriesApi.deleteCategory(id);
+      const c = await categoriesApi.listCategories();
+      setCategories(c);
+    }, "Failed to delete category");
 
-  const addUser = (data: { firstName: string; lastName: string; role: string }): void => {
-    withLoading(() => {
-      const newUser: User = { id: `USR-${Date.now()}`, ...data };
-      const updated = [...users, newUser];
-      setUsers(updated);
-      saveUsers(updated);
-    });
-  };
+  const addUser = (data: { firstName: string; lastName: string; roleId: string }) =>
+    withLoading(async () => {
+      await usersApi.createUser(data);
+      const u = await usersApi.listUsers();
+      setUsers(u);
+    }, "Failed to add user");
 
-  const deleteUser = (id: string): void => {
-    withLoading(() => {
-      const updated = users.filter((u) => u.id !== id);
-      setUsers(updated);
-      saveUsers(updated);
-    });
-  };
+  const deleteUser = (id: string) =>
+    withLoading(async () => {
+      await usersApi.deleteUser(id);
+      const u = await usersApi.listUsers();
+      setUsers(u);
+    }, "Failed to delete user");
 
   return {
-    roles, users, categories, loading,
-    addRole, deleteRole,
-    addUser, deleteUser,
-    addCategory, deleteCategory,
+    roles,
+    users,
+    categories,
+    loading,
+    error,
+    addRole,
+    deleteRole,
+    addUser,
+    deleteUser,
+    addCategory,
+    deleteCategory,
   };
 }

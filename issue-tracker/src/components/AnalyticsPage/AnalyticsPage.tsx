@@ -1,11 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Issue, Priority } from "../../types";
+import { listIssues } from "../../api/issues";
 import ProgressBar from "../ProgressBar";
 import styles from "./AnalyticsPage.module.css";
-
-interface AnalyticsPageProps {
-  issues: Issue[];
-}
 
 const PRIORITY_LABELS: Record<Priority, string> = {
   p1: "P1 — Critical",
@@ -15,6 +12,10 @@ const PRIORITY_LABELS: Record<Priority, string> = {
 };
 
 const PRIORITY_ORDER: Priority[] = ["p1", "p2", "p3", "p4"];
+
+// All issues are pulled in one page for client-side aggregation, matching the
+// project decision to keep these breakdowns off the KPI endpoint for now.
+const ANALYTICS_PAGE_SIZE = 1000;
 
 function formatDuration(ms: number): string {
   const totalMinutes = Math.round(ms / 60000);
@@ -26,7 +27,16 @@ function formatDuration(ms: number): string {
   return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
 }
 
-export default function AnalyticsPage({ issues }: AnalyticsPageProps) {
+export default function AnalyticsPage() {
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    listIssues({ pageSize: ANALYTICS_PAGE_SIZE })
+      .then((res) => setIssues(res.data))
+      .finally(() => setLoading(false));
+  }, []);
+
   const resolvedCount = useMemo(() => issues.filter((i) => i.status === "resolved").length, [issues]);
 
   const avgResolutionMs = useMemo(() => {
@@ -41,7 +51,10 @@ export default function AnalyticsPage({ issues }: AnalyticsPageProps) {
 
   const categoryCounts = useMemo(() => {
     const map = new Map<string, number>();
-    for (const i of issues) map.set(i.category, (map.get(i.category) ?? 0) + 1);
+    for (const i of issues) {
+      const label = i.category ?? "Uncategorized";
+      map.set(label, (map.get(label) ?? 0) + 1);
+    }
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [issues]);
 
@@ -53,6 +66,16 @@ export default function AnalyticsPage({ issues }: AnalyticsPageProps) {
 
   const maxCategoryCount = Math.max(1, ...categoryCounts.map(([, count]) => count));
   const maxPriorityCount = Math.max(1, ...PRIORITY_ORDER.map((p) => priorityCounts[p]));
+
+  if (loading) {
+    return (
+      <div className={styles.wrapper}>
+        <div className={styles.container}>
+          <p>Loading analytics…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.wrapper}>

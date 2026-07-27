@@ -1,18 +1,19 @@
 import { useState, ReactNode } from "react";
-import { User } from "../../types";
+import { User, Role, Category } from "../../types";
+import { ApiError } from "../../api/client";
 import styles from "./SetupPage.module.css";
 
 interface SetupPageProps {
-  roles: string[];
+  roles: Role[];
   users: User[];
-  categories: string[];
+  categories: Category[];
   loading: boolean;
-  onAddRole: (name: string) => void;
-  onDeleteRole: (name: string) => void;
-  onAddUser: (data: { firstName: string; lastName: string; role: string }) => void;
-  onDeleteUser: (id: string) => void;
-  onAddCategory: (name: string) => void;
-  onDeleteCategory: (name: string) => void;
+  onAddRole: (name: string) => Promise<void>;
+  onDeleteRole: (id: string) => Promise<void>;
+  onAddUser: (data: { firstName: string; lastName: string; roleId: string }) => Promise<void>;
+  onDeleteUser: (id: string) => Promise<void>;
+  onAddCategory: (name: string) => Promise<void>;
+  onDeleteCategory: (id: string) => Promise<void>;
 }
 
 type Panel = "roles" | "users" | "categories" | null;
@@ -37,6 +38,10 @@ function Field({ label, children, error, hint }: FieldProps) {
   );
 }
 
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
+
 export default function SetupPage({
   roles, users, categories, loading,
   onAddRole, onDeleteRole,
@@ -45,17 +50,25 @@ export default function SetupPage({
 }: SetupPageProps) {
   const [openPanel, setOpenPanel] = useState<Panel>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ kind: Panel; key: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const togglePanel = (panel: Exclude<Panel, null>) => {
     setOpenPanel((p) => (p === panel ? null : panel));
     setConfirmDelete(null);
+    setDeleteError(null);
   };
 
-  const handleDelete = (kind: Exclude<Panel, null>, key: string, fn: (key: string) => void) => {
+  const handleDelete = async (kind: Exclude<Panel, null>, key: string, fn: (key: string) => Promise<void>) => {
     if (confirmDelete?.kind === kind && confirmDelete.key === key) {
-      fn(key);
       setConfirmDelete(null);
+      setDeleteError(null);
+      try {
+        await fn(key);
+      } catch (err) {
+        setDeleteError(errorMessage(err, "Failed to delete."));
+      }
     } else {
+      setDeleteError(null);
       setConfirmDelete({ kind, key });
     }
   };
@@ -67,6 +80,8 @@ export default function SetupPage({
           <h1 className={styles.heading}>Setup</h1>
           <p className={styles.subheading}>Manage roles, users, and categories used across tickets.</p>
         </div>
+
+        {deleteError && <p className={styles.errorMsg}>{deleteError}</p>}
 
         <RolesPanel
           roles={roles}
@@ -123,11 +138,11 @@ function PanelHeader({ title, count, open, onToggle }: PanelHeaderProps) {
 }
 
 interface RolesPanelProps {
-  roles: string[];
+  roles: Role[];
   loading: boolean;
   open: boolean;
   onToggle: () => void;
-  onAdd: (name: string) => void;
+  onAdd: (name: string) => Promise<void>;
   confirmDeleteKey: string | null;
   onDelete: (key: string) => void;
 }
@@ -136,13 +151,17 @@ function RolesPanel({ roles, loading, open, onToggle, onAdd, confirmDeleteKey, o
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const trimmed = name.trim();
     if (!trimmed) { setError("Role name is required."); return; }
-    if (roles.some((r) => r.toLowerCase() === trimmed.toLowerCase())) { setError("That role already exists."); return; }
-    onAdd(trimmed);
-    setName("");
-    setError(null);
+    if (roles.some((r) => r.name.toLowerCase() === trimmed.toLowerCase())) { setError("That role already exists."); return; }
+    try {
+      await onAdd(trimmed);
+      setName("");
+      setError(null);
+    } catch (err) {
+      setError(errorMessage(err, "Failed to add role."));
+    }
   };
 
   return (
@@ -170,14 +189,14 @@ function RolesPanel({ roles, loading, open, onToggle, onAdd, confirmDeleteKey, o
           ) : (
             <ul className={styles.list}>
               {roles.map((r) => (
-                <li key={r} className={styles.listItem}>
-                  <span>{r}</span>
+                <li key={r.id} className={styles.listItem}>
+                  <span>{r.name}</span>
                   <button
-                    className={`${styles.deleteBtn} ${confirmDeleteKey === r ? styles.deleteBtnConfirm : ""}`}
+                    className={`${styles.deleteBtn} ${confirmDeleteKey === r.id ? styles.deleteBtnConfirm : ""}`}
                     disabled={loading}
-                    onClick={() => onDelete(r)}
+                    onClick={() => onDelete(r.id)}
                   >
-                    {confirmDeleteKey === r ? "Confirm?" : "🗑"}
+                    {confirmDeleteKey === r.id ? "Confirm?" : "🗑"}
                   </button>
                 </li>
               ))}
@@ -190,11 +209,11 @@ function RolesPanel({ roles, loading, open, onToggle, onAdd, confirmDeleteKey, o
 }
 
 interface CategoriesPanelProps {
-  categories: string[];
+  categories: Category[];
   loading: boolean;
   open: boolean;
   onToggle: () => void;
-  onAdd: (name: string) => void;
+  onAdd: (name: string) => Promise<void>;
   confirmDeleteKey: string | null;
   onDelete: (key: string) => void;
 }
@@ -203,13 +222,17 @@ function CategoriesPanel({ categories, loading, open, onToggle, onAdd, confirmDe
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const trimmed = name.trim();
     if (!trimmed) { setError("Category name is required."); return; }
-    if (categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) { setError("That category already exists."); return; }
-    onAdd(trimmed);
-    setName("");
-    setError(null);
+    if (categories.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) { setError("That category already exists."); return; }
+    try {
+      await onAdd(trimmed);
+      setName("");
+      setError(null);
+    } catch (err) {
+      setError(errorMessage(err, "Failed to add category."));
+    }
   };
 
   return (
@@ -237,14 +260,14 @@ function CategoriesPanel({ categories, loading, open, onToggle, onAdd, confirmDe
           ) : (
             <ul className={styles.list}>
               {categories.map((c) => (
-                <li key={c} className={styles.listItem}>
-                  <span>{c}</span>
+                <li key={c.id} className={styles.listItem}>
+                  <span>{c.name}</span>
                   <button
-                    className={`${styles.deleteBtn} ${confirmDeleteKey === c ? styles.deleteBtnConfirm : ""}`}
+                    className={`${styles.deleteBtn} ${confirmDeleteKey === c.id ? styles.deleteBtnConfirm : ""}`}
                     disabled={loading}
-                    onClick={() => onDelete(c)}
+                    onClick={() => onDelete(c.id)}
                   >
-                    {confirmDeleteKey === c ? "Confirm?" : "🗑"}
+                    {confirmDeleteKey === c.id ? "Confirm?" : "🗑"}
                   </button>
                 </li>
               ))}
@@ -258,11 +281,11 @@ function CategoriesPanel({ categories, loading, open, onToggle, onAdd, confirmDe
 
 interface UsersPanelProps {
   users: User[];
-  roles: string[];
+  roles: Role[];
   loading: boolean;
   open: boolean;
   onToggle: () => void;
-  onAdd: (data: { firstName: string; lastName: string; role: string }) => void;
+  onAdd: (data: { firstName: string; lastName: string; roleId: string }) => Promise<void>;
   confirmDeleteKey: string | null;
   onDelete: (key: string) => void;
 }
@@ -270,20 +293,24 @@ interface UsersPanelProps {
 function UsersPanel({ users, roles, loading, open, onToggle, onAdd, confirmDeleteKey, onDelete }: UsersPanelProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [role, setRole] = useState(roles[0] ?? "");
-  const [errors, setErrors] = useState<{ firstName?: string; lastName?: string; role?: string }>({});
+  const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
+  const [errors, setErrors] = useState<{ firstName?: string; lastName?: string; roleId?: string; submit?: string }>({});
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const e: typeof errors = {};
     if (!firstName.trim()) e.firstName = "First name is required.";
     if (!lastName.trim()) e.lastName = "Last name is required.";
-    if (!role) e.role = "Role is required.";
+    if (!roleId) e.roleId = "Role is required.";
     if (Object.keys(e).length) { setErrors(e); return; }
-    onAdd({ firstName: firstName.trim(), lastName: lastName.trim(), role });
-    setFirstName("");
-    setLastName("");
-    setRole(roles[0] ?? "");
-    setErrors({});
+    try {
+      await onAdd({ firstName: firstName.trim(), lastName: lastName.trim(), roleId });
+      setFirstName("");
+      setLastName("");
+      setRoleId(roles[0]?.id ?? "");
+      setErrors({});
+    } catch (err) {
+      setErrors({ submit: errorMessage(err, "Failed to add user.") });
+    }
   };
 
   return (
@@ -313,15 +340,16 @@ function UsersPanel({ users, roles, loading, open, onToggle, onAdd, confirmDelet
                   />
                 </Field>
               </div>
-              <Field label="Role" error={errors.role}>
+              <Field label="Role" error={errors.roleId}>
                 <select
                   className={styles.select}
-                  value={role}
-                  onChange={(e) => { setRole(e.target.value); setErrors((er) => ({ ...er, role: undefined })); }}
+                  value={roleId}
+                  onChange={(e) => { setRoleId(e.target.value); setErrors((er) => ({ ...er, roleId: undefined })); }}
                 >
-                  {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+                  {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </Field>
+              {errors.submit && <p className={styles.errorMsg}>{errors.submit}</p>}
               <button className={styles.btnPrimary} disabled={loading} onClick={handleAdd}>
                 {loading ? "Adding…" : "Add user"}
               </button>
@@ -334,7 +362,7 @@ function UsersPanel({ users, roles, loading, open, onToggle, onAdd, confirmDelet
             <ul className={styles.list}>
               {users.map((u) => (
                 <li key={u.id} className={styles.listItem}>
-                  <span>{u.firstName} {u.lastName} — {u.role}</span>
+                  <span>{u.firstName} {u.lastName} — {u.role?.name ?? "No role"}</span>
                   <button
                     className={`${styles.deleteBtn} ${confirmDeleteKey === u.id ? styles.deleteBtnConfirm : ""}`}
                     disabled={loading}
