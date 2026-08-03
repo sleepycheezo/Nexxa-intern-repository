@@ -20,7 +20,7 @@ export function useIssues() {
     setLoading(true);
     setError(null);
     try {
-      const res = await issuesApi.listIssues(q);
+      const res = await issuesApi.getIssues(q);
       setIssues(res.data);
       setTotal(res.total);
     } catch (err) {
@@ -46,7 +46,7 @@ export function useIssues() {
     setLoading(true);
     setError(null);
     try {
-      const created = await issuesApi.createIssue(form);
+      const created = await issuesApi.addIssue(form);
       await fetchIssues(query);
       return created;
     } catch (err) {
@@ -72,7 +72,8 @@ export function useIssues() {
     }
   };
 
-  const updateStatus = (id: string, status: Status): Promise<Issue> => updateIssue(id, { status });
+  const updateStatus = (id: string, status: Status, actorId: string): Promise<Issue> =>
+    updateIssue(id, { status, actorId });
 
   const deleteIssue = async (id: string): Promise<void> => {
     setLoading(true);

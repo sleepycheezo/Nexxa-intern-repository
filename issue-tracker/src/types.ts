@@ -39,7 +39,28 @@ export interface Issue {
   createdAt: string;
   updatedAt?: string;
   resolvedAt: string | null;
+  slaDueAt: string | null;
   attachment?: Attachment | null;
+}
+
+export interface Comment {
+  id: string;
+  authorId: string | null;
+  author: string | null;
+  body: string;
+  mentionedUserIds: string[];
+  mentioned: string[];
+  attachment: Attachment | null;
+  createdAt: string;
+}
+
+export interface HistoryEntry {
+  id: string;
+  actorId: string | null;
+  actor: string | null;
+  fromStatus: Status;
+  toStatus: Status;
+  changedAt: string;
 }
 
 export interface FormState {

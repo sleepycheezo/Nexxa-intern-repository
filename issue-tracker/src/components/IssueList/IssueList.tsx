@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Issue, Priority, Status, IssueQuery, Kpis } from "../../types";
 import { getKpis } from "../../api/dashboard";
+import { getSlaState, formatSlaBadge } from "../../lib/sla";
 import styles from "./IssueList.module.css";
 
 interface IssueListProps {
@@ -37,10 +38,16 @@ export default function IssueList({
   const [searchInput, setSearchInput] = useState(query.q ?? "");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [kpis, setKpis] = useState<Kpis>({ open: 0, inProgress: 0, resolved: 0 });
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     getKpis().then(setKpis).catch(() => {});
   }, [issues]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -154,6 +161,13 @@ export default function IssueList({
                       <span className={`${styles.badge} ${styles[`status_${issue.status}`]}`}>
                         {STATUS_LABELS[issue.status]}
                       </span>
+                      {(() => {
+                        const slaState = getSlaState(issue, now);
+                        const slaBadge = formatSlaBadge(issue, now);
+                        return slaState && slaBadge ? (
+                          <span className={`${styles.badge} ${styles[`sla_${slaState}`]}`}>{slaBadge}</span>
+                        ) : null;
+                      })()}
                     </div>
                     <button
                       className={`${styles.deleteBtn} ${confirmDeleteId === issue.id ? styles.deleteBtnConfirm : ""}`}

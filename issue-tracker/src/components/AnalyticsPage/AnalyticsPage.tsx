@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Issue, Priority } from "../../types";
-import { listIssues } from "../../api/issues";
+import { getIssues } from "../../api/issues";
 import ProgressBar from "../ProgressBar";
 import styles from "./AnalyticsPage.module.css";
 
@@ -32,7 +32,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    listIssues({ pageSize: ANALYTICS_PAGE_SIZE })
+    getIssues({ pageSize: ANALYTICS_PAGE_SIZE })
       .then((res) => setIssues(res.data))
       .finally(() => setLoading(false));
   }, []);

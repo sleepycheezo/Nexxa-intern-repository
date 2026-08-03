@@ -20,7 +20,7 @@ export function useSetup() {
     setLoading(true);
     setError(null);
     try {
-      const [r, c, u] = await Promise.all([rolesApi.listRoles(), categoriesApi.listCategories(), usersApi.listUsers()]);
+      const [r, c, u] = await Promise.all([rolesApi.getRoles(), categoriesApi.getCategories(), usersApi.getUsers()]);
       setRoles(r);
       setCategories(c);
       setUsers(u);
@@ -50,7 +50,7 @@ export function useSetup() {
 
   const addRole = (name: string) =>
     withLoading(async () => {
-      const created = await rolesApi.createRole(name);
+      const created = await rolesApi.addRole(name);
       setRoles((prev) => [...prev, created]);
     }, "Failed to add role");
 
@@ -62,7 +62,7 @@ export function useSetup() {
 
   const addCategory = (name: string) =>
     withLoading(async () => {
-      const created = await categoriesApi.createCategory(name);
+      const created = await categoriesApi.addCategory(name);
       setCategories((prev) => [...prev, created]);
     }, "Failed to add category");
 
@@ -74,7 +74,7 @@ export function useSetup() {
 
   const addUser = (data: { firstName: string; lastName: string; roleId: string }) =>
     withLoading(async () => {
-      const created = await usersApi.createUser(data);
+      const created = await usersApi.addUser(data);
       setUsers((prev) => [...prev, created]);
     }, "Failed to add user");
 

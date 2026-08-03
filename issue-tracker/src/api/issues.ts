@@ -15,6 +15,7 @@ export interface IssueUpdate {
   priority?: string;
   assignedUserId?: string | null;
   status?: Status;
+  actorId?: string;
   attachment?: File | null;
 }
 
@@ -39,11 +40,11 @@ function toFormData(fields: Record<string, string | File | null | undefined>): F
   return form;
 }
 
-export const listIssues = (query: IssueQuery) => apiGet<IssueListResponse>(`/api/issues${buildQueryString(query)}`);
+export const getIssues = (query: IssueQuery) => apiGet<IssueListResponse>(`/api/issues${buildQueryString(query)}`);
 
 export const getIssue = (id: string) => apiGet<Issue>(`/api/issues/${id}`);
 
-export const createIssue = (form: FormState) =>
+export const addIssue = (form: FormState) =>
   apiForm<Issue>(
     "POST",
     "/api/issues",
@@ -65,6 +66,7 @@ export const updateIssue = (id: string, changes: IssueUpdate) => {
   if (changes.priority !== undefined) fields.priority = changes.priority;
   if (changes.assignedUserId !== undefined) fields.assignedUserId = changes.assignedUserId ?? "";
   if (changes.status !== undefined) fields.status = changes.status;
+  if (changes.actorId !== undefined) fields.actorId = changes.actorId;
   if (changes.attachment) fields.attachment = changes.attachment;
   return apiForm<Issue>("PUT", `/api/issues/${id}`, toFormData(fields));
 };

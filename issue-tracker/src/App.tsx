@@ -32,8 +32,8 @@ export default function App() {
     setView("detail");
   };
 
-  const handleUpdateStatus = async (id: string, status: Status): Promise<Issue> => {
-    const updated = await updateStatus(id, status);
+  const handleUpdateStatus = async (id: string, status: Status, actorId: string): Promise<Issue> => {
+    const updated = await updateStatus(id, status, actorId);
     if (selectedIssue?.id === id) setSelectedIssue(updated);
     return updated;
   };

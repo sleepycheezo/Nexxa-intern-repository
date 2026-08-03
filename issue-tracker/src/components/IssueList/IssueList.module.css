@@ -234,6 +234,9 @@
 .status_in-progress { background: #fef3c7; color: #92400e; }
 .status_resolved { background: #dcfce7; color: #15803d; }
 
+.sla_at-risk { background: #fef3c7; color: #92400e; }
+.sla_breached { background: #fee2e2; color: #b91c1c; }
+
 .deleteBtn {
   font-size: 12px;
   padding: 5px 10px;
